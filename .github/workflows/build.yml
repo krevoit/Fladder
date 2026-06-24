@@ -130,24 +130,6 @@ jobs:
           echo "ARTIFACT_SUFFIX=${{ needs.fetch-info.outputs.build_type }}" >> $GITHUB_ENV
           echo "ARTIFACT_SUFFIX=${{ needs.fetch-info.outputs.build_type }}" >> $GITHUB_OUTPUT
 
-      - name: Decode Keystore for release
-        if: needs.fetch-info.outputs.build_type != 'development'
-        env:
-          ENCODED_STRING: ${{ secrets.KEYSTORE_BASE_64 }}
-          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
-          RELEASE_KEYSTORE_ALIAS: ${{ secrets.RELEASE_KEYSTORE_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
-        run: |
-          echo "$ENCODED_STRING" | base64 -d > android/app/keystore.jks
-
-          # Create the key.properties file
-          cat > android/app/key.properties <<EOF
-          storePassword=$RELEASE_KEYSTORE_PASSWORD
-          keyPassword=$RELEASE_KEY_PASSWORD
-          keyAlias=$RELEASE_KEYSTORE_ALIAS
-          EOF
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -155,6 +137,54 @@ jobs:
           java-version: "17"
           cache: "gradle"
           check-latest: true
+
+      - name: Prepare Android signing
+        if: needs.fetch-info.outputs.build_type != 'development'
+        env:
+          ENCODED_STRING: ${{ secrets.KEYSTORE_BASE_64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEYSTORE_ALIAS: ${{ secrets.RELEASE_KEYSTORE_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "$ENCODED_STRING" && -n "$RELEASE_KEYSTORE_PASSWORD" && -n "$RELEASE_KEYSTORE_ALIAS" && -n "$RELEASE_KEY_PASSWORD" ]]; then
+            printf '%s' "$ENCODED_STRING" | base64 --decode > android/app/keystore.jks
+            test -s android/app/keystore.jks
+
+            keytool -list \
+              -keystore android/app/keystore.jks \
+              -storepass "$RELEASE_KEYSTORE_PASSWORD" \
+              -alias "$RELEASE_KEYSTORE_ALIAS" \
+              -v > /dev/null
+
+            STORE_PASSWORD="$RELEASE_KEYSTORE_PASSWORD"
+            KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+            KEY_ALIAS="$RELEASE_KEYSTORE_ALIAS"
+          else
+            echo "Android release signing secrets are not fully configured. Generating a temporary CI keystore for installable APK artifacts."
+
+            STORE_PASSWORD="android"
+            KEY_PASSWORD="android"
+            KEY_ALIAS="fladder-ci"
+
+            keytool -genkeypair \
+              -keystore android/app/keystore.jks \
+              -storepass "$STORE_PASSWORD" \
+              -keypass "$KEY_PASSWORD" \
+              -alias "$KEY_ALIAS" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Fladder CI,O=Fladder,C=US"
+          fi
+
+          # Create the key.properties file
+          cat > android/app/key.properties <<EOF
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          EOF
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2.19.0
