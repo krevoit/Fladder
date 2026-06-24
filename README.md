@@ -28,7 +28,9 @@
   
 </div>
 
-
+## Changes in this fork
+* PIP in iOS with subtitle support
+* Shuffle function for TV Shows
 
 ## Key Features
 
