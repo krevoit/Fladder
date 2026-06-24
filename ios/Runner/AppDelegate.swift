@@ -1,5 +1,6 @@
 import UIKit
 import Flutter
+import AVFoundation
 import workmanager_apple
 
 @main
@@ -10,6 +11,7 @@ import workmanager_apple
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
     UNUserNotificationCenter.current().delegate = self
+    configurePlaybackAudioSession()
 
     UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) {
       granted, error in
@@ -29,6 +31,15 @@ import workmanager_apple
       frequency: NSNumber(value: 20 * 60))
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  private func configurePlaybackAudioSession() {
+    do {
+      try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+      try AVAudioSession.sharedInstance().setActive(true)
+    } catch {
+      print("Failed to configure playback audio session: \(error)")
+    }
   }
 
   // Shows a notification for background tasks when the app is in the foreground

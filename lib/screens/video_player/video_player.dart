@@ -18,6 +18,7 @@ import 'package:fladder/screens/video_player/video_player_controls.dart';
 import 'package:fladder/util/adaptive_layout/adaptive_layout.dart';
 import 'package:fladder/util/themes_data.dart';
 import 'package:fladder/widgets/shared/back_intent_dpad.dart';
+import 'package:fladder/wrappers/pip_manager.dart';
 
 class VideoPlayer extends ConsumerStatefulWidget {
   const VideoPlayer({super.key});
@@ -40,6 +41,8 @@ class _VideoPlayerState extends ConsumerState<VideoPlayer> with WidgetsBindingOb
     if (!(AdaptiveLayout.of(context).isDesktop || kIsWeb)) {
       // Don't pause when entering PiP — playback must continue.
       final inPip = ref.read(pipStateProvider).asData?.value ?? false;
+      final keepPlayingForPip =
+          pipPlatformSupported && ref.read(videoPlayerSettingsProvider).enablePictureInPicture;
       switch (state) {
         case AppLifecycleState.resumed:
           if (playing) ref.read(videoPlayerProvider).play();
@@ -47,7 +50,7 @@ class _VideoPlayerState extends ConsumerState<VideoPlayer> with WidgetsBindingOb
         case AppLifecycleState.hidden:
         case AppLifecycleState.paused:
         case AppLifecycleState.detached:
-          if (playing && !inPip) ref.read(videoPlayerProvider).pause();
+          if (playing && !inPip && !keepPlayingForPip) ref.read(videoPlayerProvider).pause();
           break;
         default:
           break;

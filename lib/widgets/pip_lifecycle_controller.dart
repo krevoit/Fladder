@@ -65,8 +65,7 @@ class _PipLifecycleControllerState extends ConsumerState<PipLifecycleController>
     );
 
     final inPip = ref.watch(pipStateProvider).asData?.value ?? false;
-    final state = ref.watch(mediaPlaybackProvider.select((v) => v.state));
-    if (inPip && state == VideoPlayerState.minimized) {
+    if (inPip) {
       final player = ref.watch(videoPlayerProvider);
       final video = player.videoWidget(const ValueKey('pip_minimized_video'), BoxFit.contain);
       final subtitle = player.subtitleWidget(false);

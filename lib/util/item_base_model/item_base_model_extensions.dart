@@ -88,6 +88,7 @@ extension ItemBaseModelsBooleans on List<ItemBaseModel> {
 
 enum ItemActions {
   play,
+  shufflePlay,
   addToQueue,
   instantMix,
   openShow,
@@ -183,6 +184,13 @@ extension ItemBaseModelExtensions on ItemBaseModel {
             action: () => play(context, ref),
             icon: const Icon(IconsaxPlusLinear.play),
             label: Text(playButtonLabel(context.localized)),
+          ),
+      if (!exclude.contains(ItemActions.shufflePlay))
+        if (this is SeriesModel)
+          ItemActionButton(
+            action: () => <ItemBaseModel>[this].playLibraryItems(context, ref, shuffle: true),
+            icon: const Icon(IconsaxPlusLinear.shuffle),
+            label: Text(context.localized.libraryShuffleAndPlayItems),
           ),
       if (!exclude.contains(ItemActions.addToQueue))
         if (this is AudioModel || this is AlbumModel || this is ArtistModel)
