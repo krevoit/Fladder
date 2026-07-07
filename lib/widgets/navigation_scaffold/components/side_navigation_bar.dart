@@ -7,11 +7,12 @@ import 'package:iconsax_plus/iconsax_plus.dart';
 
 import 'package:fladder/models/collection_types.dart';
 import 'package:fladder/models/settings/client_settings_model.dart';
+import 'package:fladder/providers/dashboard_mode_provider.dart';
+import 'package:fladder/providers/playlist_provider.dart';
 import 'package:fladder/providers/settings/client_settings_provider.dart';
 import 'package:fladder/providers/views_provider.dart';
 import 'package:fladder/routes/auto_router.dart';
 import 'package:fladder/routes/auto_router.gr.dart';
-import 'package:fladder/screens/metadata/refresh_metadata.dart';
 import 'package:fladder/screens/shared/animated_fade_size.dart';
 import 'package:fladder/theme.dart';
 import 'package:fladder/util/adaptive_layout/adaptive_layout.dart';
@@ -21,17 +22,16 @@ import 'package:fladder/widgets/navigation_scaffold/components/adaptive_fab.dart
 import 'package:fladder/widgets/navigation_scaffold/components/background_image.dart';
 import 'package:fladder/widgets/navigation_scaffold/components/collapse_button.dart';
 import 'package:fladder/widgets/navigation_scaffold/components/destination_model.dart';
+import 'package:fladder/widgets/navigation_scaffold/components/music_dashboard_nav_items.dart';
 import 'package:fladder/widgets/navigation_scaffold/components/navigation_body.dart';
 import 'package:fladder/widgets/navigation_scaffold/components/navigation_button.dart';
 import 'package:fladder/widgets/navigation_scaffold/components/settings_user_icon.dart';
 import 'package:fladder/widgets/shared/custom_tooltip.dart';
-import 'package:fladder/widgets/shared/item_actions.dart';
-import 'package:fladder/widgets/shared/modal_bottom_sheet.dart';
 import 'package:fladder/widgets/shared/simple_overflow_widget.dart';
 
 final navBarNode = FocusNode();
 
-class SideNavigationRail extends ConsumerStatefulWidget {
+class SideNavigationRail extends ConsumerWidget {
   final int currentIndex;
   final List<DestinationModel> destinations;
   final String currentLocation;
@@ -47,12 +47,7 @@ class SideNavigationRail extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<ConsumerStatefulWidget> createState() => _SideNavigationRail();
-}
-
-class _SideNavigationRail extends ConsumerState<SideNavigationRail> {
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final textDirection = Directionality.of(context);
     final isRtl = textDirection == TextDirection.rtl;
     final views = ref.watch(viewsProvider.select((value) => value.views));
@@ -99,6 +94,10 @@ class _SideNavigationRail extends ConsumerState<SideNavigationRail> {
 
     final surfaceColor = Theme.of(context).colorScheme.surface;
 
+    final musicDashboard = ref.watch(musicDashboardModeProvider);
+
+    final playLists = ref.watch(playlistProvider.select((value) => value.collections));
+
     return Stack(
       children: [
         AdaptiveLayout(
@@ -106,7 +105,7 @@ class _SideNavigationRail extends ConsumerState<SideNavigationRail> {
             // -0.1 offset to fix single visible pixel line
             sideBarWidth: (fullyExpanded ? expandedWidth : collapsedWidth) - 0.1,
           ),
-          child: widget.child,
+          child: child,
         ),
         Positioned.fill(
           child: Align(
@@ -184,7 +183,7 @@ class _SideNavigationRail extends ConsumerState<SideNavigationRail> {
                                     ),
                               ),
                               onPressed: !largeBar
-                                  ? () => widget.scaffoldKey.currentState?.openDrawer()
+                                  ? () => scaffoldKey.currentState?.openDrawer()
                                   : () => ref
                                       .read(clientSettingsProvider.notifier)
                                       .update((state) => state.copyWith(expandSideBar: !state.expandSideBar)),
@@ -204,7 +203,7 @@ class _SideNavigationRail extends ConsumerState<SideNavigationRail> {
                             child: Column(
                               mainAxisAlignment: !largeBar ? MainAxisAlignment.center : MainAxisAlignment.start,
                               children: [
-                                ...widget.destinations.mapIndexed(
+                                ...destinations.mapIndexed(
                                   (index, destination) => CustomTooltip(
                                     tooltipContent: expandedSideBar
                                         ? null
@@ -219,14 +218,14 @@ class _SideNavigationRail extends ConsumerState<SideNavigationRail> {
                                           ),
                                     position: tooltipPosition,
                                     child: destination.toNavigationButton(
-                                      widget.currentIndex == index,
+                                      currentIndex == index,
                                       true,
                                       navFocusNode: index == 0,
                                       shouldExpand,
                                     ),
                                   ),
                                 ),
-                                if (views.isNotEmpty && largeBar) ...[
+                                if (largeBar) ...[
                                   const Divider(
                                     indent: 32,
                                     endIndent: 32,
@@ -234,78 +233,19 @@ class _SideNavigationRail extends ConsumerState<SideNavigationRail> {
                                   Flexible(
                                     child: SimpleOverflowWidget(
                                       axis: Axis.vertical,
-                                      children: views.map(
-                                        (view) {
-                                          final selected = context.router.currentUrl.contains(view.id);
-                                          final actions = [
-                                            ItemActionButton(
-                                              label: Text(context.localized.scanLibrary),
-                                              icon: const Icon(IconsaxPlusLinear.refresh),
-                                              action: () => showRefreshPopup(context, view.id, view.name),
-                                            )
-                                          ];
-                                          return CustomTooltip(
-                                            tooltipContent: expandedSideBar
-                                                ? null
-                                                : Container(
-                                                    decoration: BoxDecoration(
-                                                      borderRadius: FladderTheme.smallShape.borderRadius,
-                                                      color: Theme.of(context).colorScheme.surface,
-                                                    ),
-                                                    child: Padding(
-                                                      padding: const EdgeInsets.all(12),
-                                                      child: Text(
-                                                        view.name,
-                                                        style: Theme.of(context).textTheme.titleSmall,
-                                                      ),
-                                                    ),
-                                                  ),
-                                            position: tooltipPosition,
-                                            child: view.toNavigationButton(
-                                              selected,
-                                              true,
-                                              shouldExpand,
-                                              () => view.navigateToView(context),
-                                              onSecondaryTapDown: (details) => _showContextMenu(
-                                                context,
-                                                ref,
-                                                details.globalPosition,
-                                                actions,
-                                              ),
-                                              onLongPress: () => showBottomSheetPill(
-                                                context: context,
-                                                content: (context, scrollController) => ListView(
-                                                  shrinkWrap: true,
-                                                  controller: scrollController,
-                                                  children: actions.listTileItems(context, useIcons: true),
+                                      children: musicDashboard
+                                          ? buildMusicDashboardNavItems(context, views, playLists, shouldExpand, ref)
+                                          : views
+                                              .map(
+                                                (view) => ViewNavigationItem(
+                                                  view: view,
+                                                  expandedSideBar: expandedSideBar,
+                                                  usePostersForLibrary: usePostersForLibrary,
+                                                  shouldExpand: shouldExpand,
+                                                  toolTipPosition: tooltipPosition,
                                                 ),
-                                              ),
-                                              customIcon: usePostersForLibrary
-                                                  ? Container(
-                                                      decoration: BoxDecoration(
-                                                        borderRadius: FladderTheme.smallShape.borderRadius,
-                                                      ),
-                                                      clipBehavior: Clip.hardEdge,
-                                                      child: SizedBox.square(
-                                                        dimension: 45,
-                                                        child: FladderImage(
-                                                          image: view.imageData?.primary,
-                                                          placeHolder: Card(
-                                                            child: Icon(
-                                                              selected
-                                                                  ? view.collectionType.icon
-                                                                  : view.collectionType.iconOutlined,
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    )
-                                                  : null,
-                                              trailing: actions,
-                                            ),
-                                          );
-                                        },
-                                      ).toList(),
+                                              )
+                                              .toList(),
                                       overflowBuilder: (remainingCount) => CustomTooltip(
                                         tooltipContent: expandedSideBar
                                             ? null
@@ -384,13 +324,13 @@ class _SideNavigationRail extends ConsumerState<SideNavigationRail> {
                                       ),
                                     ),
                                   ),
-                                ],
+                                ]
                               ],
                             ),
                           ),
                           NavigationButton(
                             label: context.localized.settings,
-                            selected: widget.currentLocation.contains(const SettingsRoute().routeName),
+                            selected: currentLocation.contains(const SettingsRoute().routeName),
                             selectedIcon: const Icon(IconsaxPlusBold.setting_3),
                             horizontal: true,
                             expanded: shouldExpand,
@@ -418,18 +358,9 @@ class _SideNavigationRail extends ConsumerState<SideNavigationRail> {
     );
   }
 
-  Future<void> _showContextMenu(BuildContext context, WidgetRef ref, Offset globalPos, List<ItemAction> actions) async {
-    final position = RelativeRect.fromLTRB(globalPos.dx, globalPos.dy, globalPos.dx, globalPos.dy);
-    await showMenu(
-      context: context,
-      position: position,
-      items: actions.popupMenuItems(useIcons: true),
-    );
-  }
-
   AdaptiveFab actionButton(BuildContext context) {
-    return ((widget.currentIndex >= 0 && widget.currentIndex < widget.destinations.length)
-            ? widget.destinations[widget.currentIndex].floatingActionButton
+    return ((currentIndex >= 0 && currentIndex < destinations.length)
+            ? destinations[currentIndex].floatingActionButton
             : null) ??
         AdaptiveFab(
           context: context,

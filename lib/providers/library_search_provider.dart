@@ -14,6 +14,7 @@ import 'package:fladder/models/collection_types.dart';
 import 'package:fladder/models/item_base_model.dart';
 import 'package:fladder/models/items/folder_model.dart';
 import 'package:fladder/models/items/item_shared_models.dart';
+import 'package:fladder/models/items/photo_queue_source.dart';
 import 'package:fladder/models/items/photos_model.dart';
 import 'package:fladder/models/items/playlist_model.dart';
 import 'package:fladder/models/library_filter_model.dart';
@@ -42,6 +43,7 @@ final librarySearchProvider =
 
 const _libraryMusicInitialQueueLimit = 5;
 const _libraryMusicRefillLimit = 100;
+const _libraryPhotoFetchLimit = 100;
 
 class LibrarySearchNotifier extends StateNotifier<LibrarySearchModel> {
   LibrarySearchNotifier(this.ref) : super(const LibrarySearchModel());
@@ -68,15 +70,18 @@ class LibrarySearchNotifier extends StateNotifier<LibrarySearchModel> {
   ) async {
     loading = true;
     state = state.resetLazyLoad();
+
+    List<String> viewModelIds = viewModelId?.split(",") ?? [];
+
     if (state.views.isEmpty && state.folderOverwrite.isEmpty) {
       if (folderId != null) {
         await loadFolders(folderId: folderId);
       } else {
-        await loadViews(viewModelId, filters);
+        await loadViews(viewModelIds, filters);
       }
     }
 
-    await loadFilters();
+    await loadFilters(filters);
 
     if (!wasInitialized) {
       wasInitialized = true;
@@ -178,19 +183,18 @@ class LibrarySearchNotifier extends StateNotifier<LibrarySearchModel> {
   }
 
   Future<void> loadViews(
-    String? viewModelId,
+    List<String>? viewModelId,
     LibraryFilterModel filters,
   ) async {
     final response = await api.usersUserIdViewsGet(includeHidden: false);
     final createdViews = response.body?.items?.map((e) => ViewModel.fromBodyDto(e, ref));
+
     Map<ViewModel, bool> mappedModels =
         createdViews?.isNotEmpty ?? false ? {for (var element in createdViews!) element: false} : {};
 
-    final selectedModel = mappedModels.keys.firstWhereOrNull((element) => element.id == viewModelId);
+    final selectedModels = mappedModels.keys.where((element) => viewModelId?.contains(element.id) ?? false).toList();
 
-    final views = selectedModel != null
-        ? mappedModels.setKey(mappedModels.keys.firstWhere((element) => element.id == viewModelId), true)
-        : mappedModels;
+    final views = mappedModels.setKeys(selectedModels, true);
 
     state = state.copyWith(
       views: views,
@@ -220,9 +224,10 @@ class LibrarySearchNotifier extends StateNotifier<LibrarySearchModel> {
     state = state.copyWith(folderOverwrite: response.body?.items.toList() ?? []);
   }
 
-  Future<void> loadFilters() async {
+  Future<void> loadFilters(LibraryFilterModel filters) async {
     if (loadedFilters == true) return;
     loadedFilters = true;
+
     final enabledCollections = state.views.included.map((e) => e.collectionType.itemKinds).expand((element) => element);
     final mappedList = await Future.wait(state.views.included.map((viewModel) => _loadFilters(viewModel)));
     final studios = (await Future.wait(state.views.included.map((viewModel) => _loadStudios(viewModel))))
@@ -240,7 +245,9 @@ class LibrarySearchNotifier extends StateNotifier<LibrarySearchModel> {
     var tempFilters = tempState.filters;
     tempState = tempState.copyWith(
       filters: tempFilters.copyWith(
-        types: tempFilters.types.setAll(false).setKeys(enabledCollections, true),
+        types: filters.types.isEmpty
+            ? tempFilters.types.setAll(false).setKeys(enabledCollections, true)
+            : tempFilters.types,
         genres: {for (var element in genres) element.name: false}.replaceMap(tempFilters.genres),
         studios: {for (var element in studios) element: false}.replaceMap(tempFilters.studios),
         tags: {for (var element in tags) element: false}.replaceMap(tempFilters.tags),
@@ -304,7 +311,7 @@ class LibrarySearchNotifier extends StateNotifier<LibrarySearchModel> {
         ...state.filters.itemFilters.included,
         if (state.filters.favourites == true) ItemFilter.isfavorite,
       ],
-      includeItemTypes: state.filters.types.included.map((e) => e.dtoKind).toList(),
+      includeItemTypes: state.filters.types.included.map((e) => e.dtoKind).expand((e) => e).toList(),
     );
     return response.body;
   }
@@ -687,6 +694,51 @@ class LibrarySearchNotifier extends StateNotifier<LibrarySearchModel> {
     );
   }
 
+  PhotoQueueSource? createPhotoQueueSource({required bool shuffle}) {
+    final recursive = state.searchQuery.isNotEmpty ? true : state.filters.recursive;
+
+    if (state.folderOverwrite.isNotEmpty) {
+      return _buildPhotoQueueSource(
+        parentId: state.folderOverwrite.last.id,
+        recursive: recursive,
+        shuffle: shuffle,
+      );
+    }
+
+    if (state.views.hasEnabled) {
+      if (state.views.included.length != 1) return null;
+      return _buildPhotoQueueSource(
+        parentId: state.views.included.first.id,
+        recursive: recursive,
+        shuffle: shuffle,
+      );
+    }
+
+    if (state.searchQuery.isEmpty && state.filters.favourites == false) {
+      return null;
+    }
+
+    return _buildPhotoQueueSource(
+      parentId: null,
+      recursive: true,
+      shuffle: shuffle,
+    );
+  }
+
+  PhotoQueueSource _buildPhotoQueueSource({
+    required String? parentId,
+    required bool? recursive,
+    required bool shuffle,
+  }) {
+    return PhotoQueueSource(
+      libraryState: state,
+      parentId: parentId,
+      recursive: recursive,
+      shuffle: shuffle,
+      limit: _libraryPhotoFetchLimit,
+    );
+  }
+
   Future<bool> _playMusicFromQueueSource(
     BuildContext context,
     WidgetRef ref,
@@ -796,14 +848,17 @@ class LibrarySearchNotifier extends StateNotifier<LibrarySearchModel> {
   }
 
   Future<void> viewGallery(BuildContext context, {PhotoModel? selected, bool shuffle = false}) async {
-    List<PhotoModel> allItems = [];
-    allItems = await showLoadingOverlay(context, callBack: fetchGallery(shuffle: shuffle));
+    List<PhotoModel> allItems = state.activePosters.whereType<PhotoModel>().toList();
     if (allItems.isNotEmpty) {
       final newItemList = shuffle ? allItems.shuffled() : allItems;
-      await context.pushRoute(PhotoViewerRoute(
-        items: newItemList,
-        selected: selected?.id,
-      ));
+      final photoSource = state.selectedPosters.isEmpty ? createPhotoQueueSource(shuffle: shuffle) : null;
+      await context.pushRoute(
+        PhotoViewerRoute(
+          items: newItemList,
+          selected: selected?.id,
+          photoQueueSource: photoSource,
+        ),
+      );
     } else {
       FladderSnack.show(context.localized.libraryFetchNoItemsFound, context: context);
     }

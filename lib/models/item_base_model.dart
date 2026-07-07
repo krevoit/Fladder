@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:auto_route/auto_route.dart';
+import 'package:collection/collection.dart';
 import 'package:dart_mappable/dart_mappable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
@@ -28,7 +29,6 @@ import 'package:fladder/models/items/season_model.dart';
 import 'package:fladder/models/items/series_model.dart';
 import 'package:fladder/models/items/watched_state.dart';
 import 'package:fladder/models/library_search/library_search_options.dart';
-import 'package:fladder/providers/api_provider.dart';
 import 'package:fladder/routes/auto_router.gr.dart';
 import 'package:fladder/screens/details_screens/album_detail_screen.dart';
 import 'package:fladder/screens/details_screens/artist_detail_screen.dart';
@@ -208,7 +208,6 @@ class ItemBaseModel with ItemBaseModelMappable {
         context.router.push(
           PhotoViewerRoute(
             items: [photo],
-            loadingItems: ref?.read(jellyApiProvider).itemsGetAlbumPhotos(albumId: photo.albumId),
             selected: photo.id,
           ),
         );
@@ -318,8 +317,8 @@ enum FladderItemType {
     selectedicon: IconsaxPlusBold.music,
   ),
   musicAlbum(
-    icon: IconsaxPlusLinear.music,
-    selectedicon: IconsaxPlusBold.music,
+    icon: IconsaxPlusLinear.music_dashboard,
+    selectedicon: IconsaxPlusBold.music_dashboard,
   ),
   musicArtist(
     icon: IconsaxPlusLinear.music,
@@ -443,26 +442,29 @@ enum FladderItemType {
         FladderItemType.tvchannel => l10n.mediaTypeTV(count),
       };
 
-  BaseItemKind get dtoKind => switch (this) {
-        FladderItemType.baseType => BaseItemKind.userrootfolder,
-        FladderItemType.audio => BaseItemKind.audio,
-        FladderItemType.collectionFolder => BaseItemKind.collectionfolder,
-        FladderItemType.musicAlbum => BaseItemKind.musicalbum,
-        FladderItemType.musicArtist => BaseItemKind.musicartist,
-        FladderItemType.musicVideo => BaseItemKind.video,
-        FladderItemType.video => BaseItemKind.video,
-        FladderItemType.movie => BaseItemKind.movie,
-        FladderItemType.series => BaseItemKind.series,
-        FladderItemType.season => BaseItemKind.season,
-        FladderItemType.episode => BaseItemKind.episode,
-        FladderItemType.photo => BaseItemKind.photo,
-        FladderItemType.person => BaseItemKind.person,
-        FladderItemType.photoAlbum => BaseItemKind.photoalbum,
-        FladderItemType.folder => BaseItemKind.folder,
-        FladderItemType.boxset => BaseItemKind.boxset,
-        FladderItemType.playlist => BaseItemKind.playlist,
-        FladderItemType.book => BaseItemKind.book,
-        FladderItemType.tvchannel => BaseItemKind.tvchannel,
+  Set<BaseItemKind> get dtoKind => switch (this) {
+        FladderItemType.baseType => {BaseItemKind.userrootfolder},
+        FladderItemType.audio => {BaseItemKind.audio},
+        FladderItemType.collectionFolder => {BaseItemKind.collectionfolder},
+        FladderItemType.musicAlbum => {BaseItemKind.musicalbum},
+        FladderItemType.musicArtist => {BaseItemKind.musicartist},
+        FladderItemType.musicVideo => {BaseItemKind.video},
+        FladderItemType.video => {BaseItemKind.video},
+        FladderItemType.movie => {BaseItemKind.movie},
+        FladderItemType.series => {BaseItemKind.series},
+        FladderItemType.season => {BaseItemKind.season},
+        FladderItemType.episode => {BaseItemKind.episode},
+        FladderItemType.photo => {BaseItemKind.photo},
+        FladderItemType.person => {
+            BaseItemKind.person,
+            BaseItemKind.musicartist,
+          },
+        FladderItemType.photoAlbum => {BaseItemKind.photoalbum},
+        FladderItemType.folder => {BaseItemKind.folder},
+        FladderItemType.boxset => {BaseItemKind.boxset},
+        FladderItemType.playlist => {BaseItemKind.playlist},
+        FladderItemType.book => {BaseItemKind.book},
+        FladderItemType.tvchannel => {BaseItemKind.tvchannel},
       };
 
   final IconData icon;
