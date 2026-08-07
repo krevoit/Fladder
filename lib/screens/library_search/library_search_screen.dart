@@ -6,8 +6,10 @@ import 'package:auto_route/auto_route.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
 
+import 'package:fladder/jellyfin/jellyfin_open_api.enums.swagger.dart';
 import 'package:fladder/models/boxset_model.dart';
 import 'package:fladder/models/item_base_model.dart';
+import 'package:fladder/models/items/item_shared_models.dart';
 import 'package:fladder/models/items/playlist_model.dart';
 import 'package:fladder/models/library_filter_model.dart';
 import 'package:fladder/models/library_search/library_search_model.dart';
@@ -15,6 +17,7 @@ import 'package:fladder/models/library_search/library_search_options.dart';
 import 'package:fladder/models/settings/client_settings_model.dart';
 import 'package:fladder/providers/library_search_provider.dart';
 import 'package:fladder/providers/settings/client_settings_provider.dart';
+import 'package:fladder/routes/auto_router.gr.dart';
 import 'package:fladder/screens/collections/add_to_collection.dart';
 import 'package:fladder/screens/library_search/widgets/library_filter_chips.dart';
 import 'package:fladder/screens/library_search/widgets/library_play_options_.dart';
@@ -25,12 +28,13 @@ import 'package:fladder/screens/library_search/widgets/suggestion_search_bar.dar
 import 'package:fladder/screens/playlists/add_to_playlists.dart';
 import 'package:fladder/screens/shared/animated_fade_size.dart';
 import 'package:fladder/screens/shared/nested_scaffold.dart';
-import 'package:fladder/theme.dart';
 import 'package:fladder/util/adaptive_layout/adaptive_layout.dart';
 import 'package:fladder/util/debouncer.dart';
 import 'package:fladder/util/item_base_model/item_base_model_extensions.dart';
 import 'package:fladder/util/list_padding.dart';
 import 'package:fladder/util/localization_helper.dart';
+import 'package:fladder/util/map_bool_helper.dart';
+import 'package:fladder/util/position_provider.dart';
 import 'package:fladder/util/refresh_state.dart';
 import 'package:fladder/util/router_extension.dart';
 import 'package:fladder/widgets/navigation_scaffold/components/background_image.dart';
@@ -47,23 +51,33 @@ import 'package:fladder/widgets/shared/scroll_position.dart';
 
 @RoutePage()
 class LibrarySearchScreen extends ConsumerStatefulWidget {
-  final String? viewModelId;
+  final String? query;
+  final List<String>? parentId;
   final bool? favourites;
-  final List<String>? folderId;
   final SortingOrder? sortOrder;
   final SortingOptions? sortingOptions;
   final Map<FladderItemType, bool>? types;
   final Map<String, bool>? genres;
+  final Map<Studio, bool>? studios;
+  final Map<ItemFilter, bool>? itemFilters;
+  final Map<String, bool>? tags;
+  final Map<int, bool>? years;
   final bool? recursive;
+  final bool? isDefault;
   const LibrarySearchScreen({
-    @QueryParam("parentId") this.viewModelId,
-    @QueryParam("folderId") this.folderId,
+    @QueryParam("query") this.query,
+    @QueryParam("parentId") this.parentId,
     @QueryParam("favourites") this.favourites,
     @QueryParam("sortOrder") this.sortOrder,
     @QueryParam("sortOptions") this.sortingOptions,
     @QueryParam("itemTypes") this.types,
     @QueryParam("genres") this.genres,
+    @QueryParam("studios") this.studios,
+    @QueryParam("itemFilters") this.itemFilters,
+    @QueryParam("tags") this.tags,
+    @QueryParam("years") this.years,
     @QueryParam("recursive") this.recursive,
+    @QueryParam("isDefault") this.isDefault,
     super.key,
   });
 
@@ -79,7 +93,7 @@ class _LibrarySearchScreenState extends ConsumerState<LibrarySearchScreen> {
 
   bool loadOnStart = false;
 
-  Key get uniqueKey => Key(widget.folderId?.join(',').toString() ?? widget.viewModelId ?? "EmptySearch");
+  Key get uniqueKey => Key(widget.parentId?.join(',').toString() ?? "EmptySearch");
   AutoDisposeStateNotifierProvider<LibrarySearchNotifier, LibrarySearchModel> get providerKey =>
       librarySearchProvider(uniqueKey);
   LibrarySearchNotifier get libraryProvider => ref.read(librarySearchProvider(uniqueKey).notifier);
@@ -124,7 +138,7 @@ class _LibrarySearchScreenState extends ConsumerState<LibrarySearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isEmptySearchScreen = widget.viewModelId == null && widget.favourites == null && widget.folderId == null;
+    final isEmptySearchScreen = widget.parentId == null && widget.favourites == null;
     final librarySearchResults = ref.watch(providerKey);
     final postersList = librarySearchResults.posters.hideEmptyChildren(librarySearchResults.filters.hideEmptyShows);
     final libraryViewType = ref.watch(libraryViewTypeProvider);
@@ -136,7 +150,7 @@ class _LibrarySearchScreenState extends ConsumerState<LibrarySearchScreen> {
     ref.listen(
       providerKey,
       (previous, next) {
-        if (previous?.filters != next.filters) {
+        if (previous?.shouldRefresh(next) == true) {
           refreshSearch();
         }
       },
@@ -150,9 +164,7 @@ class _LibrarySearchScreenState extends ConsumerState<LibrarySearchScreen> {
       (value) => value.backgroundImage == BackgroundType.blurred && value.enableBlurEffects,
     ));
 
-    final sideBarPadding = EdgeInsetsDirectional.only(start: adaptiveLayout.sideBarWidth);
-
-    List<ItemAction>? itemActions = librarySearchResults.nestedCurrentItem?.generateActions(
+    List<ItemAction>? itemActions = librarySearchResults.folderOverwrite.included.firstOrNull?.generateActions(
       context,
       ref,
       exclude: {
@@ -181,7 +193,7 @@ class _LibrarySearchScreenState extends ConsumerState<LibrarySearchScreen> {
       ItemActionButton(
         label: Text(context.localized.filter(2)),
         action: () => showSavedFilters(context, uniqueKey),
-        icon: const Icon(IconsaxPlusLinear.refresh),
+        icon: const Icon(IconsaxPlusLinear.filter_edit),
       ),
       ItemActionButton(
         label: Text(context.localized.selectViewType),
@@ -299,10 +311,23 @@ class _LibrarySearchScreenState extends ConsumerState<LibrarySearchScreen> {
 
       final hasSelection = librarySearchResults.selectedPosters.isNotEmpty;
 
+      final selectedPostersId = librarySearchResults.selectedPosters.map((e) => e.id).toList();
+
       if (isSelectMode) {
         return [
           if (inlinedPlayButtons) playButton,
           shuffleButton,
+          if (librarySearchResults.showOpenMultiple)
+            ItemActionButton(
+              action: () {
+                LibrarySearchRoute(
+                  parentId: selectedPostersId,
+                  key: Key(selectedPostersId.join(',')),
+                ).push(context);
+              },
+              label: Text(context.localized.openSelected),
+              icon: const Icon(IconsaxPlusLinear.folder_open),
+            ),
           ItemActionDivider(),
           ItemActionButton(
             action: () {
@@ -375,7 +400,7 @@ class _LibrarySearchScreenState extends ConsumerState<LibrarySearchScreen> {
             label: Text(context.localized.markAsUnwatched),
             icon: const Icon(IconsaxPlusLinear.eye_slash),
           ),
-          if (librarySearchResults.nestedCurrentItem is BoxSetModel)
+          if (librarySearchResults.folderOverwrite.included.firstOrNull is BoxSetModel)
             ItemActionButton(
                 action: hasSelection
                     ? () async {
@@ -392,7 +417,7 @@ class _LibrarySearchScreenState extends ConsumerState<LibrarySearchScreen> {
                     child: Icon(IconsaxPlusLinear.save_remove, size: 20),
                   ),
                 )),
-          if (librarySearchResults.nestedCurrentItem is PlaylistModel)
+          if (librarySearchResults.folderOverwrite.included.firstOrNull is PlaylistModel)
             ItemActionButton(
               action: hasSelection
                   ? () async {
@@ -483,6 +508,39 @@ class _LibrarySearchScreenState extends ConsumerState<LibrarySearchScreen> {
       }
     }
 
+    LibraryFilterModel? incomingFilter() {
+      if (widget.favourites != null ||
+          widget.sortOrder != null ||
+          widget.sortingOptions != null ||
+          widget.types != null ||
+          widget.genres != null ||
+          widget.itemFilters != null ||
+          widget.studios != null ||
+          widget.years != null ||
+          widget.tags != null ||
+          widget.recursive != null ||
+          widget.query != null) {
+        final defaultFilter = const LibraryFilterModel();
+
+        return defaultFilter.copyWith(
+          searchQuery: widget.query ?? "",
+          favourites: widget.favourites,
+          sortOrder: widget.sortOrder ?? defaultFilter.sortOrder,
+          sortingOption: widget.sortingOptions ?? defaultFilter.sortingOption,
+          types: widget.types ?? {},
+          genres: widget.genres ?? {},
+          itemFilters: widget.itemFilters ?? {},
+          studios: widget.studios ?? {},
+          years: widget.years ?? {},
+          tags: widget.tags ?? {},
+          recursive: widget.recursive,
+          isDefault: widget.isDefault ?? false,
+        );
+      } else {
+        return null;
+      }
+    }
+
     return MediaQuery(
       data: mediaQuery.copyWith(
         padding: mediaQuery.padding.copyWith(top: mediaQuery.padding.top + adaptiveLayout.topBarHeight),
@@ -528,19 +586,11 @@ class _LibrarySearchScreenState extends ConsumerState<LibrarySearchScreen> {
                   autoFocus: false,
                   contextRefresh: false,
                   onRefresh: () async {
-                    final defaultFilter = const LibraryFilterModel();
+                    final filter = incomingFilter();
                     if (libraryProvider.mounted) {
                       return libraryProvider.initRefresh(
-                        widget.folderId,
-                        widget.viewModelId,
-                        defaultFilter.copyWith(
-                          favourites: widget.favourites,
-                          sortOrder: widget.sortOrder ?? defaultFilter.sortOrder,
-                          sortingOption: widget.sortingOptions ?? defaultFilter.sortingOption,
-                          types: widget.types ?? {},
-                          genres: widget.genres ?? {},
-                          recursive: widget.recursive,
-                        ),
+                        parentIds: widget.parentId ?? [],
+                        filters: filter,
                       );
                     }
                   },
@@ -550,210 +600,59 @@ class _LibrarySearchScreenState extends ConsumerState<LibrarySearchScreen> {
                       controller: scrollController,
                       physics: const AlwaysScrollableScrollPhysics(),
                       slivers: [
-                        SliverAppBar(
-                          floating: !floatingAppBar,
-                          collapsedHeight: 80,
-                          automaticallyImplyLeading: false,
-                          primary: true,
-                          pinned: floatingAppBar,
-                          elevation: 5,
-                          surfaceTintColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          backgroundColor: Colors.transparent,
-                          titleSpacing: 4,
-                          flexibleSpace: RepaintBoundary(
-                            child: Container(
-                              width: double.infinity,
-                              height: 200,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Theme.of(context).colorScheme.surface.withAlpha(255),
-                                    Theme.of(context).colorScheme.surface.withAlpha(0),
-                                  ],
-                                ),
-                              ),
-                              child: useBlurredBackground
-                                  ? ShaderMask(
-                                      shaderCallback: (bounds) {
-                                        return LinearGradient(
-                                          begin: Alignment.topCenter,
-                                          end: Alignment.bottomCenter,
-                                          colors: [
-                                            Colors.white.withAlpha(255),
-                                            Colors.white.withAlpha(0),
-                                          ],
-                                        ).createShader(
-                                          Rect.fromLTRB(0, 10, bounds.width, bounds.height),
-                                        );
-                                      },
-                                      blendMode: BlendMode.dstIn,
-                                      child: const BackgroundImage(),
-                                    )
-                                  : null,
-                            ),
-                          ),
-                          actions: [
-                            SizedBox.square(
-                              dimension: toolbarHeight,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.surfaceContainerLow,
-                                  borderRadius: FladderTheme.defaultShape.borderRadius,
-                                ),
-                                child: Tooltip(
-                                  message: librarySearchResults.nestedCurrentItem?.type.label(context.localized) ??
-                                      context.localized.library(1),
-                                  child: AdaptiveLayout.inputDeviceOf(context) == InputDevice.pointer
-                                      ? PopupMenuButton(
-                                          tooltip: context.localized.library(1),
-                                          icon: Icon(librarySearchResults.nestedCurrentItem?.type.icon ??
-                                              IconsaxPlusLinear.document),
-                                          itemBuilder: (context) => menuActions.toList().popupMenuItems(useIcons: true),
-                                        )
-                                      : IconButton(
-                                          onPressed: () async {
-                                            await showBottomSheetPill(
-                                              context: context,
-                                              content: (context, scrollController) => ListView(
-                                                shrinkWrap: true,
-                                                controller: scrollController,
-                                                children: menuActions
-                                                    .map(
-                                                      (e) => e.toListItem(context, useIcons: true, shouldPop: true),
-                                                    )
-                                                    .toList(),
-                                              ),
-                                            );
-                                          },
-                                          icon: Padding(
-                                            padding: const EdgeInsets.all(6),
-                                            child: Icon(
-                                              librarySearchResults.nestedCurrentItem?.type.icon ??
-                                                  IconsaxPlusLinear.document,
-                                              color:
-                                                  librarySearchResults.nestedCurrentItem?.userData.isFavourite == true
-                                                      ? Theme.of(context).colorScheme.primary
-                                                      : null,
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                            ),
-                            if (AdaptiveLayout.layoutModeOf(context) == LayoutMode.single) ...[
-                              const SizedBox(width: 6),
-                              SizedBox.square(dimension: toolbarHeight - 3.0, child: const SettingsUserIcon()),
-                            ],
-                            const SizedBox(width: 12)
-                          ],
-                          title: Padding(
-                            padding: sideBarPadding,
-                            child: SizedBox(
-                              height: toolbarHeight,
-                              child: Row(
-                                spacing: 2,
-                                children: [
-                                  const SizedBox(width: 2),
-                                  if (AdaptiveLayout.inputDeviceOf(context) != InputDevice.dPad)
-                                    Center(
-                                      child: SizedBox.square(
-                                        dimension: toolbarHeight,
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            color: Theme.of(context).colorScheme.surfaceContainerLow,
-                                            borderRadius: FladderTheme.defaultShape.borderRadius,
-                                          ),
-                                          child: context.router.backButton(),
-                                        ),
-                                      ),
-                                    ),
-                                  Flexible(
-                                    child: Hero(
-                                      tag: "PrimarySearch",
-                                      child: SuggestionSearchBar(
-                                        autoFocus: isEmptySearchScreen,
-                                        key: uniqueKey,
-                                        title: librarySearchResults.searchBarTitle(context),
-                                        debounceDuration: const Duration(seconds: 1),
-                                        onItem: (value) async {
-                                          await value.navigateTo(context);
-                                          refreshKey.currentState?.show();
-                                        },
-                                        onSubmited: (value) async {
-                                          if (librarySearchResults.searchQuery != value) {
-                                            libraryProvider.setSearch(value);
-                                            refreshKey.currentState?.show();
-                                          }
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          bottom: PreferredSize(
-                            preferredSize:
-                                Size(0, AdaptiveLayout.inputDeviceOf(context) == InputDevice.dPad ? 105 : 35),
-                            child: Padding(
-                              padding: sideBarPadding,
-                              child: IgnorePointer(
-                                ignoring: librarySearchResults.loading,
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  mainAxisAlignment: MainAxisAlignment.start,
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    Row(
-                                      spacing: 6,
-                                      children: [
-                                        ScrollStatePosition(
-                                          controller: scrollController,
-                                          positionBuilder: (state) => AnimatedFadeSize(
-                                            child: state != ScrollState.top
-                                                ? Padding(
-                                                    padding: const EdgeInsets.only(left: 8.0),
-                                                    child: Tooltip(
-                                                      message: context.localized.scrollToTop,
-                                                      child: IconButton.filled(
-                                                        onPressed: () => scrollController.animateTo(0,
-                                                            duration: const Duration(milliseconds: 500),
-                                                            curve: Curves.easeInOutCubic),
-                                                        icon: const Icon(
-                                                          IconsaxPlusLinear.arrow_up,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  )
-                                                : const SizedBox(),
-                                          ),
-                                        ),
-                                        Flexible(
-                                          child: SingleChildScrollView(
-                                            padding: const EdgeInsets.all(8),
-                                            scrollDirection: Axis.horizontal,
-                                            child: LibraryFilterChips(
-                                              key: uniqueKey,
-                                            ),
-                                          ),
-                                        ),
+                        PinnedHeaderSliver(
+                          child: HideOnScroll(
+                            controller: scrollController,
+                            visibleBuilder: (visible) => Stack(
+                              children: [
+                                Container(
+                                  width: double.infinity,
+                                  height: AdaptiveLayout.inputDeviceOf(context) == InputDevice.dPad ? 160 : 80,
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [
+                                        Theme.of(context).colorScheme.surface.withAlpha(255),
+                                        Theme.of(context).colorScheme.surface.withAlpha(0),
                                       ],
                                     ),
-                                    if (AdaptiveLayout.inputDeviceOf(context) == InputDevice.dPad)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                                        height: 50,
-                                        child: Row(
-                                          spacing: 4,
-                                          children: generateQuickActions(true).map((e) => e.toButton()).toList(),
-                                        ),
-                                      )
-                                  ],
+                                  ),
+                                  child: useBlurredBackground
+                                      ? ShaderMask(
+                                          shaderCallback: (bounds) {
+                                            return LinearGradient(
+                                              begin: Alignment.topCenter,
+                                              end: Alignment.bottomCenter,
+                                              colors: [
+                                                Colors.white.withAlpha(255),
+                                                Colors.white.withAlpha(0),
+                                              ],
+                                            ).createShader(
+                                              Rect.fromLTRB(0, 10, bounds.width, bounds.height),
+                                            );
+                                          },
+                                          blendMode: BlendMode.dstIn,
+                                          child: const BackgroundImage(),
+                                        )
+                                      : null,
                                 ),
-                              ),
+                                AnimatedSlide(
+                                  duration: const Duration(milliseconds: 250),
+                                  offset: visible || floatingAppBar ? Offset.zero : const Offset(0, -1),
+                                  child: LibraryAppBar(
+                                    toolbarHeight: toolbarHeight,
+                                    menuActions: menuActions,
+                                    librarySearchResults: librarySearchResults,
+                                    quickActions: generateQuickActions(true),
+                                    isEmptySearchScreen: isEmptySearchScreen,
+                                    refreshKey: refreshKey,
+                                    uniqueKey: uniqueKey,
+                                    libraryProvider: libraryProvider,
+                                    scrollController: scrollController,
+                                  ),
+                                )
+                              ],
                             ),
                           ),
                         ),
@@ -795,6 +694,191 @@ class _LibrarySearchScreenState extends ConsumerState<LibrarySearchScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class LibraryAppBar extends ConsumerWidget {
+  final double toolbarHeight;
+  final List<ItemAction> menuActions;
+  final LibrarySearchModel librarySearchResults;
+  final List<ItemAction> quickActions;
+  final bool isEmptySearchScreen;
+  final GlobalKey<RefreshIndicatorState> refreshKey;
+  final Key uniqueKey;
+  final LibrarySearchNotifier libraryProvider;
+  final ScrollController scrollController;
+
+  const LibraryAppBar({
+    required this.toolbarHeight,
+    required this.menuActions,
+    required this.librarySearchResults,
+    this.quickActions = const [],
+    required this.isEmptySearchScreen,
+    required this.refreshKey,
+    required this.uniqueKey,
+    required this.libraryProvider,
+    required this.scrollController,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Padding(
+      padding: EdgeInsets.only(
+        top: MediaQuery.paddingOf(context).top,
+        left: AdaptiveLayout.adaptivePadding(context).left,
+        bottom: 16,
+      ),
+      child: Column(
+        children: [
+          IntrinsicHeight(
+            child: Padding(
+              padding: EdgeInsets.only(
+                right: AdaptiveLayout.adaptivePadding(context).right,
+              ),
+              child: Row(
+                spacing: 4,
+                children: [
+                  if (AdaptiveLayout.inputDeviceOf(context) != InputDevice.dPad)
+                    SizedBox.square(
+                      dimension: toolbarHeight,
+                      child: PositionRoundedClip(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surfaceContainerLow,
+                          ),
+                          child: context.router.backButton(),
+                        ),
+                      ),
+                    ),
+                  Expanded(
+                    child: PositionRoundedClip(
+                      child: SuggestionSearchBar(
+                        autoFocus: isEmptySearchScreen,
+                        key: uniqueKey,
+                        title: librarySearchResults.searchBarTitle(context),
+                        debounceDuration: const Duration(seconds: 1),
+                        onItem: (value) async {
+                          await value.navigateTo(context);
+                          refreshKey.currentState?.show();
+                        },
+                        onSubmited: (value) async {
+                          if (librarySearchResults.filters.searchQuery != value) {
+                            libraryProvider.setSearch(value);
+                            refreshKey.currentState?.show();
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  SizedBox.square(
+                    dimension: toolbarHeight,
+                    child: PositionRoundedClip(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surfaceContainerLow,
+                        ),
+                        child: Tooltip(
+                          message: librarySearchResults.folderOverwrite.included.firstOrNull?.type
+                                  .label(context.localized) ??
+                              context.localized.library(1),
+                          child: AdaptiveLayout.inputDeviceOf(context) == InputDevice.pointer
+                              ? PopupMenuButton(
+                                  tooltip: context.localized.library(1),
+                                  icon: Icon(librarySearchResults.folderOverwrite.included.firstOrNull?.type.icon ??
+                                      IconsaxPlusLinear.document),
+                                  itemBuilder: (context) => menuActions.toList().popupMenuItems(useIcons: true),
+                                )
+                              : IconButton(
+                                  onPressed: () async {
+                                    await showBottomSheetPill(
+                                      context: context,
+                                      content: (context, scrollController) => ListView(
+                                        shrinkWrap: true,
+                                        controller: scrollController,
+                                        children: menuActions
+                                            .map(
+                                              (e) => e.toListItem(context, useIcons: true, shouldPop: true),
+                                            )
+                                            .toList(),
+                                      ),
+                                    );
+                                  },
+                                  icon: Padding(
+                                    padding: const EdgeInsets.all(6),
+                                    child: Icon(
+                                      librarySearchResults.folderOverwrite.included.firstOrNull?.type.icon ??
+                                          IconsaxPlusLinear.document,
+                                      color: librarySearchResults
+                                                  .folderOverwrite.included.firstOrNull?.userData.isFavourite ==
+                                              true
+                                          ? Theme.of(context).colorScheme.primary
+                                          : null,
+                                    ),
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (AdaptiveLayout.layoutModeOf(context) == LayoutMode.single)
+                    SizedBox.square(
+                      dimension: toolbarHeight,
+                      child: const PositionRoundedClip(
+                        child: SettingsUserIcon(),
+                      ),
+                    ),
+                ].withPositionProvider(),
+              ),
+            ),
+          ),
+          Row(
+            spacing: 6,
+            children: [
+              if (AdaptiveLayout.inputDeviceOf(context) != InputDevice.dPad)
+                ScrollStatePosition(
+                  controller: scrollController,
+                  positionBuilder: (state) => AnimatedFadeSize(
+                    child: state != ScrollState.top
+                        ? Tooltip(
+                            message: context.localized.scrollToTop,
+                            child: IconButton.filled(
+                              onPressed: () => scrollController.animateTo(0,
+                                  duration: const Duration(milliseconds: 500), curve: Curves.easeInOutCubic),
+                              icon: const Icon(
+                                IconsaxPlusLinear.arrow_up,
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(vertical: 8).add(EdgeInsets.only(
+                    right: AdaptiveLayout.adaptivePadding(context).right,
+                  )),
+                  scrollDirection: Axis.horizontal,
+                  child: LibraryFilterChips(
+                    key: uniqueKey,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (AdaptiveLayout.inputDeviceOf(context) == InputDevice.dPad)
+            Container(
+              padding: EdgeInsets.only(
+                right: AdaptiveLayout.adaptivePadding(context).right,
+              ),
+              child: Row(
+                spacing: 4,
+                children: quickActions.map((e) => e.toButton()).toList(),
+              ),
+            )
+        ],
       ),
     );
   }

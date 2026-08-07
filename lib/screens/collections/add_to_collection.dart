@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
+import 'package:square_progress_indicator/square_progress_indicator.dart';
 
 import 'package:fladder/models/boxset_model.dart';
 import 'package:fladder/models/item_base_model.dart';
@@ -43,7 +44,7 @@ class _AddToCollectionState extends ConsumerState<AddToCollection> {
 
   @override
   Widget build(BuildContext context) {
-    final collectonOptions = ref.watch(provider);
+    final collectionProvider = ref.watch(provider);
     return ActionContent(
       title: Column(
         children: [
@@ -93,38 +94,47 @@ class _AddToCollectionState extends ConsumerState<AddToCollection> {
                   icon: const Icon(Icons.add_rounded)),
             ],
           ),
+          if (collectionProvider.isLoading && collectionProvider.collections.isEmpty) const CircularProgressIndicator(),
           Flexible(
             child: ListView(
               shrinkWrap: true,
               padding: const EdgeInsets.symmetric(vertical: 12),
               children: [
-                ...collectonOptions.collections.entries.map(
+                ...collectionProvider.collections.entries.map(
                   (e) {
-                    return FocusButton(
-                      onTap: () => toggleCollection(e.key, e.value == true),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          color: e.value == true
-                              ? Theme.of(context).colorScheme.primaryContainer
-                              : Theme.of(context).colorScheme.surfaceContainer,
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(8),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  e.key.name,
-                                  style: Theme.of(context).textTheme.bodyLarge,
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: FocusButton(
+                        onTap: () => toggleCollection(e.key, e.value == true),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            color: e.value == true
+                                ? Theme.of(context).colorScheme.primaryContainer
+                                : Theme.of(context).colorScheme.surfaceContainer,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    e.key.name,
+                                    style: Theme.of(context).textTheme.bodyLarge,
+                                  ),
                                 ),
-                              ),
-                              Checkbox(
-                                value: e.value,
-                                onChanged: (value) async => toggleCollection(e.key, value ?? false),
-                              ),
-                            ],
+                                SquareProgressIndicator(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  value: e.value == null && collectionProvider.isLoading ? null : 0,
+                                  child: Checkbox(
+                                    value: e.value,
+                                    tristate: true,
+                                    onChanged: (value) async => toggleCollection(e.key, value ?? false),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),

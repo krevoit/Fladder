@@ -13,13 +13,15 @@ import 'package:flutter/material.dart' as _i32;
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 import 'package:auto_route/auto_route.dart' as _i31;
-import 'package:collection/collection.dart' as _i36;
+import 'package:collection/collection.dart' as _i38;
 
+import 'package:fladder/jellyfin/jellyfin_open_api.enums.swagger.dart' as _i37;
 import 'package:fladder/models/item_base_model.dart' as _i33;
-import 'package:fladder/models/items/photo_queue_source.dart' as _i38;
-import 'package:fladder/models/items/photos_model.dart' as _i37;
+import 'package:fladder/models/items/item_shared_models.dart' as _i36;
+import 'package:fladder/models/items/photo_queue_source.dart' as _i40;
+import 'package:fladder/models/items/photos_model.dart' as _i39;
 import 'package:fladder/models/library_search/library_search_options.dart' as _i35;
-import 'package:fladder/models/seerr/seerr_dashboard_model.dart' as _i39;
+import 'package:fladder/models/seerr/seerr_dashboard_model.dart' as _i41;
 import 'package:fladder/routes/nested_details_screen.dart' as _i13;
 import 'package:fladder/screens/control_panel/control_active_tasks_page.dart' as _i3;
 import 'package:fladder/screens/control_panel/control_dashboard_page.dart' as _i4;
@@ -50,7 +52,7 @@ import 'package:fladder/screens/settings/settings_screen.dart' as _i27;
 import 'package:fladder/screens/settings/settings_selection_screen.dart' as _i28;
 import 'package:fladder/screens/splash_screen.dart' as _i29;
 import 'package:fladder/screens/syncing/synced_screen.dart' as _i30;
-import 'package:fladder/seerr/seerr_models.dart' as _i40;
+import 'package:fladder/seerr/seerr_models.dart' as _i42;
 
 /// generated route for
 /// [_i1.AboutSettingsPage]
@@ -389,38 +391,53 @@ class LibraryRoute extends _i31.PageRouteInfo<void> {
 /// [_i17.LibrarySearchScreen]
 class LibrarySearchRoute extends _i31.PageRouteInfo<LibrarySearchRouteArgs> {
   LibrarySearchRoute({
-    String? viewModelId,
-    List<String>? folderId,
+    String? query,
+    List<String>? parentId,
     bool? favourites,
     _i35.SortingOrder? sortOrder,
     _i35.SortingOptions? sortingOptions,
     Map<_i33.FladderItemType, bool>? types,
     Map<String, bool>? genres,
+    Map<_i36.Studio, bool>? studios,
+    Map<_i37.ItemFilter, bool>? itemFilters,
+    Map<String, bool>? tags,
+    Map<int, bool>? years,
     bool? recursive,
+    bool? isDefault,
     _i34.Key? key,
     List<_i31.PageRouteInfo>? children,
   }) : super(
           LibrarySearchRoute.name,
           args: LibrarySearchRouteArgs(
-            viewModelId: viewModelId,
-            folderId: folderId,
+            query: query,
+            parentId: parentId,
             favourites: favourites,
             sortOrder: sortOrder,
             sortingOptions: sortingOptions,
             types: types,
             genres: genres,
+            studios: studios,
+            itemFilters: itemFilters,
+            tags: tags,
+            years: years,
             recursive: recursive,
+            isDefault: isDefault,
             key: key,
           ),
           rawQueryParams: {
-            'parentId': viewModelId,
-            'folderId': folderId,
+            'query': query,
+            'parentId': parentId,
             'favourites': favourites,
             'sortOrder': sortOrder,
             'sortOptions': sortingOptions,
             'itemTypes': types,
             'genres': genres,
+            'studios': studios,
+            'itemFilters': itemFilters,
+            'tags': tags,
+            'years': years,
             'recursive': recursive,
+            'isDefault': isDefault,
           },
           initialChildren: children,
         );
@@ -433,25 +450,35 @@ class LibrarySearchRoute extends _i31.PageRouteInfo<LibrarySearchRouteArgs> {
       final queryParams = data.queryParams;
       final args = data.argsAs<LibrarySearchRouteArgs>(
         orElse: () => LibrarySearchRouteArgs(
-          viewModelId: queryParams.optString('parentId'),
-          folderId: queryParams.optList('folderId'),
+          query: queryParams.optString('query'),
+          parentId: queryParams.optList('parentId'),
           favourites: queryParams.optBool('favourites'),
           sortOrder: queryParams.get('sortOrder'),
           sortingOptions: queryParams.get('sortOptions'),
           types: queryParams.get('itemTypes'),
           genres: queryParams.get('genres'),
+          studios: queryParams.get('studios'),
+          itemFilters: queryParams.get('itemFilters'),
+          tags: queryParams.get('tags'),
+          years: queryParams.get('years'),
           recursive: queryParams.optBool('recursive'),
+          isDefault: queryParams.optBool('isDefault'),
         ),
       );
       return _i17.LibrarySearchScreen(
-        viewModelId: args.viewModelId,
-        folderId: args.folderId,
+        query: args.query,
+        parentId: args.parentId,
         favourites: args.favourites,
         sortOrder: args.sortOrder,
         sortingOptions: args.sortingOptions,
         types: args.types,
         genres: args.genres,
+        studios: args.studios,
+        itemFilters: args.itemFilters,
+        tags: args.tags,
+        years: args.years,
         recursive: args.recursive,
+        isDefault: args.isDefault,
         key: args.key,
       );
     },
@@ -460,20 +487,25 @@ class LibrarySearchRoute extends _i31.PageRouteInfo<LibrarySearchRouteArgs> {
 
 class LibrarySearchRouteArgs {
   const LibrarySearchRouteArgs({
-    this.viewModelId,
-    this.folderId,
+    this.query,
+    this.parentId,
     this.favourites,
     this.sortOrder,
     this.sortingOptions,
     this.types,
     this.genres,
+    this.studios,
+    this.itemFilters,
+    this.tags,
+    this.years,
     this.recursive,
+    this.isDefault,
     this.key,
   });
 
-  final String? viewModelId;
+  final String? query;
 
-  final List<String>? folderId;
+  final List<String>? parentId;
 
   final bool? favourites;
 
@@ -485,40 +517,60 @@ class LibrarySearchRouteArgs {
 
   final Map<String, bool>? genres;
 
+  final Map<_i36.Studio, bool>? studios;
+
+  final Map<_i37.ItemFilter, bool>? itemFilters;
+
+  final Map<String, bool>? tags;
+
+  final Map<int, bool>? years;
+
   final bool? recursive;
+
+  final bool? isDefault;
 
   final _i34.Key? key;
 
   @override
   String toString() {
-    return 'LibrarySearchRouteArgs{viewModelId: $viewModelId, folderId: $folderId, favourites: $favourites, sortOrder: $sortOrder, sortingOptions: $sortingOptions, types: $types, genres: $genres, recursive: $recursive, key: $key}';
+    return 'LibrarySearchRouteArgs{query: $query, parentId: $parentId, favourites: $favourites, sortOrder: $sortOrder, sortingOptions: $sortingOptions, types: $types, genres: $genres, studios: $studios, itemFilters: $itemFilters, tags: $tags, years: $years, recursive: $recursive, isDefault: $isDefault, key: $key}';
   }
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other is! LibrarySearchRouteArgs) return false;
-    return viewModelId == other.viewModelId &&
-        const _i36.ListEquality().equals(folderId, other.folderId) &&
+    return query == other.query &&
+        const _i38.ListEquality().equals(parentId, other.parentId) &&
         favourites == other.favourites &&
         sortOrder == other.sortOrder &&
         sortingOptions == other.sortingOptions &&
-        const _i36.MapEquality().equals(types, other.types) &&
-        const _i36.MapEquality().equals(genres, other.genres) &&
+        const _i38.MapEquality().equals(types, other.types) &&
+        const _i38.MapEquality().equals(genres, other.genres) &&
+        const _i38.MapEquality().equals(studios, other.studios) &&
+        const _i38.MapEquality().equals(itemFilters, other.itemFilters) &&
+        const _i38.MapEquality().equals(tags, other.tags) &&
+        const _i38.MapEquality().equals(years, other.years) &&
         recursive == other.recursive &&
+        isDefault == other.isDefault &&
         key == other.key;
   }
 
   @override
   int get hashCode =>
-      viewModelId.hashCode ^
-      const _i36.ListEquality().hash(folderId) ^
+      query.hashCode ^
+      const _i38.ListEquality().hash(parentId) ^
       favourites.hashCode ^
       sortOrder.hashCode ^
       sortingOptions.hashCode ^
-      const _i36.MapEquality().hash(types) ^
-      const _i36.MapEquality().hash(genres) ^
+      const _i38.MapEquality().hash(types) ^
+      const _i38.MapEquality().hash(genres) ^
+      const _i38.MapEquality().hash(studios) ^
+      const _i38.MapEquality().hash(itemFilters) ^
+      const _i38.MapEquality().hash(tags) ^
+      const _i38.MapEquality().hash(years) ^
       recursive.hashCode ^
+      isDefault.hashCode ^
       key.hashCode;
 }
 
@@ -643,9 +695,9 @@ class LoginRouteArgs {
 /// [_i21.PhotoViewerScreen]
 class PhotoViewerRoute extends _i31.PageRouteInfo<PhotoViewerRouteArgs> {
   PhotoViewerRoute({
-    List<_i37.PhotoModel>? items,
+    List<_i39.PhotoModel>? items,
     String? selected,
-    _i38.PhotoQueueSource? photoQueueSource,
+    _i40.PhotoQueueSource? photoQueueSource,
     _i32.Key? key,
     List<_i31.PageRouteInfo>? children,
   }) : super(
@@ -687,11 +739,11 @@ class PhotoViewerRouteArgs {
     this.key,
   });
 
-  final List<_i37.PhotoModel>? items;
+  final List<_i39.PhotoModel>? items;
 
   final String? selected;
 
-  final _i38.PhotoQueueSource? photoQueueSource;
+  final _i40.PhotoQueueSource? photoQueueSource;
 
   final _i32.Key? key;
 
@@ -704,7 +756,7 @@ class PhotoViewerRouteArgs {
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other is! PhotoViewerRouteArgs) return false;
-    return const _i36.ListEquality().equals(items, other.items) &&
+    return const _i38.ListEquality().equals(items, other.items) &&
         selected == other.selected &&
         photoQueueSource == other.photoQueueSource &&
         key == other.key;
@@ -712,7 +764,7 @@ class PhotoViewerRouteArgs {
 
   @override
   int get hashCode =>
-      const _i36.ListEquality().hash(items) ^ selected.hashCode ^ photoQueueSource.hashCode ^ key.hashCode;
+      const _i38.ListEquality().hash(items) ^ selected.hashCode ^ photoQueueSource.hashCode ^ key.hashCode;
 }
 
 /// generated route for
@@ -753,7 +805,7 @@ class SeerrDetailsRoute extends _i31.PageRouteInfo<SeerrDetailsRouteArgs> {
   SeerrDetailsRoute({
     required String mediaType,
     required int tmdbId,
-    _i39.SeerrDashboardPosterModel? poster,
+    _i41.SeerrDashboardPosterModel? poster,
     _i32.Key? key,
     List<_i31.PageRouteInfo>? children,
   }) : super(
@@ -802,7 +854,7 @@ class SeerrDetailsRouteArgs {
 
   final int tmdbId;
 
-  final _i39.SeerrDashboardPosterModel? poster;
+  final _i41.SeerrDashboardPosterModel? poster;
 
   final _i32.Key? key;
 
@@ -841,7 +893,7 @@ class SeerrRoute extends _i31.PageRouteInfo<void> {
 /// [_i26.SeerrSearchScreen]
 class SeerrSearchRoute extends _i31.PageRouteInfo<SeerrSearchRouteArgs> {
   SeerrSearchRoute({
-    _i40.SeerrSearchMode? mode,
+    _i42.SeerrSearchMode? mode,
     int? yearGte,
     _i32.Key? key,
     List<_i31.PageRouteInfo>? children,
@@ -876,7 +928,7 @@ class SeerrSearchRoute extends _i31.PageRouteInfo<SeerrSearchRouteArgs> {
 class SeerrSearchRouteArgs {
   const SeerrSearchRouteArgs({this.mode, this.yearGte, this.key});
 
-  final _i40.SeerrSearchMode? mode;
+  final _i42.SeerrSearchMode? mode;
 
   final int? yearGte;
 
